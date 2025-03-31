@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "outDir": "dist",
+    "target": "es2018",
+    "isolatedModules": false,
+    "noEmit": false
+  },
+  "$schema": null,
+  "include": ["backend/**/*.ts", "index.ts"]
+}
+

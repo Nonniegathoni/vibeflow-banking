@@ -1,0 +1,12 @@
+{
+    "json.schemas": [
+      {
+        "fileMatch": ["tsconfig*.json"],
+        "url": ""
+      }
+    ],
+    "typescript.tsdk": "node_modules/typescript/lib",
+    "typescript.enablePromptUseWorkspaceTsdk": true
+  }
+  
+  
