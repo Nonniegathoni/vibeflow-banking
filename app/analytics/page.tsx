@@ -1,41 +1,33 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useUser } from "@/contexts/UserContext"
-import { AlertTriangle } from "lucide-react"
-import { getTransactions } from "@/services/api"
-import { formatKES } from "@/utils/format"
-
-interface Transaction {
-    id: string
-    amount: number
-    type: "deposit" | "withdrawal"
-    description: string
-    createdAt: string
-    isSuspicious: boolean
-}
+import { useState, useEffect } from "react";
+import { Transaction } from "@/types";
+import { useUser } from "@/contexts/UserContext";
+import { AlertTriangle } from "lucide-react";
+import { getTransactions } from "@/services/api";
+import { formatKES } from "@/utils/format";
 
 export default function AlertsPage() {
-    const { user } = useUser()
-    const [suspiciousTransactions, setSuspiciousTransactions] = useState<Transaction[]>([])
-    const [loading, setLoading] = useState(true)
+    const { user } = useUser();
+    const [suspiciousTransactions, setSuspiciousTransactions] = useState<Transaction[]>([]);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const fetchAlerts = async () => {
             try {
-                const response = await getTransactions()
-                setSuspiciousTransactions(response.data.filter((t: Transaction) => t.isSuspicious))
+                const response = await getTransactions();
+                setSuspiciousTransactions(response.filter((t: Transaction) => t.riskScore !== undefined && t.riskScore > 0));
             } catch (error) {
-                console.error("Error fetching alerts:", error)
+                console.error("Error fetching alerts:", error);
             } finally {
-                setLoading(false)
+                setLoading(false);
             }
         }
 
         if (user) {
             fetchAlerts()
         }
-    }, [user])
+    }, [user]);
 
     if (!user) {
         return <div>Please log in to view alerts</div>
@@ -64,7 +56,7 @@ export default function AlertsPage() {
                                     <div>
                                         <p className="font-semibold text-red-700">Suspicious {transaction.type} detected</p>
                                         <p className="text-red-600">Amount: {formatKES(transaction.amount)}</p>
-                                        <p className="text-sm text-red-500">{new Date(transaction.createdAt).toLocaleString()}</p>
+                                        <p className="text-sm text-red-500">{new Date(transaction.timestamp).toLocaleString()}</p>
                                     </div>
                                 </div>
                             </div>
@@ -75,4 +67,3 @@ export default function AlertsPage() {
         </div>
     )
 }
-

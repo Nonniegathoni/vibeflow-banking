@@ -7,6 +7,16 @@ interface DecodedToken {
   role: string;
 }
 
+declare module 'express' {
+  interface Request {
+    admin?: {
+      id: string;
+      email: string;
+      role: string;
+    };
+  }
+}
+
 const adminAuth = (req: Request, res: Response, next: NextFunction) => {
   try {
     const token = req.header("Authorization")?.replace("Bearer ", "");

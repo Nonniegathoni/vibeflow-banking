@@ -1,12 +1,13 @@
 import express, { type Request, type Response, type NextFunction } from "express"
-import { authMiddleware, adminMiddleware } from "../middleware/auth"
+import { auth } from "../middleware/auth"
+import adminAuth from "../middleware/adminAuth"
 import { createNotFoundError } from "../middleware/error-handler"
 import db from "../config/database"
 
 const router = express.Router()
 
 // Get fraud alerts for current user
-router.get("/alerts", authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.get("/alerts", auth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await db.query(
       `SELECT fa.*, t.type as transaction_type, t.amount as transaction_amount 
@@ -14,7 +15,7 @@ router.get("/alerts", authMiddleware, async (req: Request, res: Response, next: 
        JOIN transactions t ON fa.transaction_id = t.id
        WHERE fa.user_id = $1
        ORDER BY fa.created_at DESC`,
-      [req.user.id],
+      [req.user!.id],
     )
 
     res.status(200).json({
@@ -28,7 +29,7 @@ router.get("/alerts", authMiddleware, async (req: Request, res: Response, next: 
 })
 
 // Get fraud alert by ID
-router.get("/alerts/:id", authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.get("/alerts/:id", auth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params
 
@@ -37,7 +38,7 @@ router.get("/alerts/:id", authMiddleware, async (req: Request, res: Response, ne
        FROM fraud_alerts fa
        JOIN transactions t ON fa.transaction_id = t.id
        WHERE fa.id = $1 AND fa.user_id = $2`,
-      [id, req.user.id],
+      [id, req.user!.id],
     )
 
     if (result.rows.length === 0) {
@@ -54,7 +55,7 @@ router.get("/alerts/:id", authMiddleware, async (req: Request, res: Response, ne
 })
 
 // Admin routes for fraud management
-router.get("/admin/alerts", adminMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.get("/admin/alerts", adminAuth, async (req: any, res: Response, next: NextFunction) => {
   try {
     const page = Number.parseInt(req.query.page as string) || 1
     const limit = Number.parseInt(req.query.limit as string) || 10
@@ -102,7 +103,7 @@ router.get("/admin/alerts", adminMiddleware, async (req: Request, res: Response,
 })
 
 // Update fraud alert status (admin only)
-router.put("/admin/alerts/:id", adminMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.put("/admin/alerts/:id", adminAuth, async (req: any, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params
     const { status, resolution } = req.body
@@ -119,7 +120,7 @@ router.put("/admin/alerts/:id", adminMiddleware, async (req: Request, res: Respo
        SET status = $1, resolution = $2, resolved_by = $3, resolved_at = CASE WHEN $1 = 'resolved' THEN CURRENT_TIMESTAMP ELSE resolved_at END
        WHERE id = $4
        RETURNING *`,
-      [status, resolution || null, req.user.id, id],
+      [status, resolution || null, req.user!.id, id],
     )
 
     if (result.rows.length === 0) {
@@ -137,4 +138,3 @@ router.put("/admin/alerts/:id", adminMiddleware, async (req: Request, res: Respo
 })
 
 export default router
-

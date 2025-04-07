@@ -1,12 +1,12 @@
 import express, { Request, Response, NextFunction } from "express";
-import { adminMiddleware } from "../middleware/auth";
+import adminAuth from "../middleware/adminAuth";
 import db from "../config/database";
 import { createNotFoundError } from "../middleware/error-handler";
 
 const router = express.Router();
 
 // All routes in this file require admin privileges
-router.use(adminMiddleware);
+router.use(adminAuth);
 
 // Get dashboard statistics
 router.get("/dashboard", async (req: Request, res: Response, next: NextFunction) => {

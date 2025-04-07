@@ -1,32 +1,44 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useUser } from "@/contexts/UserContext"
+import { useUser } from "@/contexts/UserContext" // Ensure UserContext provides a User object or null
 import { AlertTriangle } from "lucide-react"
-import { getTransactions } from "@/services/api"
-import { formatKES } from "@/utils/format"
+import { getTransactions } from "@/services/api" // Ensure getTransactions is exported
+import { formatKES } from "@/utils/format" // Ensure formatKES is exported and works
+import { Transaction } from "@/types"
 
-interface Transaction {
-    id: string
-    amount: number
-    type: "deposit" | "withdrawal"
-    description: string
-    createdAt: string
-    isSuspicious: boolean
+// Define the User type based on what useUser() actually provides
+interface User {
+    // Add properties that your UserContext actually provides, e.g.:
+    id: string;
+    name: string;
+    email: string;
+    // hasAlerts?: boolean; // Removed as per error diagnosis
 }
 
+
 export default function AlertsPage() {
-    const { user } = useUser()
+    // Ensure useUser provides a User object or null, matching the interface above
+    const { user } = useUser() as { user: User | null }; 
     const [suspiciousTransactions, setSuspiciousTransactions] = useState<Transaction[]>([])
     const [loading, setLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null);
+
 
     useEffect(() => {
         const fetchAlerts = async () => {
+            setLoading(true);
+            setError(null);
             try {
-                const response = await getTransactions()
-                setSuspiciousTransactions(response.data.filter((t: Transaction) => t.isSuspicious))
-            } catch (error) {
-                console.error("Error fetching alerts:", error)
+                // Fetch transactions and filter for suspicious ones
+                const transactions: Transaction[] = await getTransactions();
+                // Assuming the backend returns transactions with a riskScore property
+                const suspicious = transactions.filter((t: Transaction) => (t.riskScore || 0) > 0);
+                setSuspiciousTransactions(suspicious);
+                setSuspiciousTransactions(suspicious)
+            } catch (err: any) {
+                console.error("Error fetching alerts:", err)
+                setError(err?.response?.data?.message || err.message || "Failed to load alerts.");
             } finally {
                 setLoading(false)
             }
@@ -34,25 +46,34 @@ export default function AlertsPage() {
 
         if (user) {
             fetchAlerts()
+        } else {
+             setLoading(false); // Not logged in, stop loading
         }
-    }, [user])
-
-    if (!user) {
-        return <div>Please log in to view alerts</div>
-    }
+    }, [user]) // Dependency array includes user
 
     if (loading) {
-        return <div>Loading alerts...</div>
+        return <div className="container mx-auto px-4 py-8 text-center">Loading alerts...</div>
     }
+    
+    if (!user) {
+        // Suggest login or handle appropriately
+        return <div className="container mx-auto px-4 py-8 text-center">Please log in to view alerts.</div>
+    }
+
+    if (error) {
+         return <div className="container mx-auto px-4 py-8 text-center text-red-600">Error: {error}</div>
+    }
+
 
     return (
         <div className="container mx-auto px-4 py-8">
             <h1 className="text-3xl font-bold mb-6">Fraud Alerts</h1>
             <div className="bg-white p-6 rounded-lg shadow-md">
-                {!user.hasAlerts ? (
+                {/* Check suspiciousTransactions array length instead of user.hasAlerts */}
+                {suspiciousTransactions.length === 0 ? (
                     <div className="text-center py-8">
                         <div className="bg-green-100 text-green-800 p-4 rounded-lg inline-block">
-                            No fraud alerts detected for your account
+                            No suspicious transactions detected requiring alerts.
                         </div>
                     </div>
                 ) : (
@@ -60,11 +81,13 @@ export default function AlertsPage() {
                         {suspiciousTransactions.map((transaction) => (
                             <div key={transaction.id} className="border-l-4 border-red-500 bg-red-50 p-4">
                                 <div className="flex items-start">
-                                    <AlertTriangle className="h-5 w-5 text-red-600 mr-2" />
+                                    <AlertTriangle className="h-5 w-5 text-red-600 mr-2 flex-shrink-0" />
                                     <div>
                                         <p className="font-semibold text-red-700">Suspicious {transaction.type} detected</p>
                                         <p className="text-red-600">Amount: {formatKES(transaction.amount)}</p>
-                                        <p className="text-sm text-red-500">{new Date(transaction.createdAt).toLocaleString()}</p>
+                                        {/* Display timestamp as date string */}
+                                        <p className="text-sm text-red-500">{new Date(transaction.timestamp).toLocaleString()}</p>
+                                        {transaction.description && <p className="text-sm text-gray-600 mt-1">Description: {transaction.description}</p>}
                                     </div>
                                 </div>
                             </div>
@@ -75,4 +98,3 @@ export default function AlertsPage() {
         </div>
     )
 }
-

@@ -1,206 +1,147 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, type ReactNode, useCallback } from "react"
-import type { User } from "@/types"
 import { useToast } from "@/hooks/use-toast"
 
-interface UserContextType {
-  user: User | null
-  loading: boolean
-  error: string | null
-  login: (email: string, password: string) => Promise<void>
-  register: (userData: any) => Promise<void>
-  logout: () => void
-  updateUser: (userData: Partial<User>) => void
-  clearError: () => void
+export interface User {
+  hasAlerts: any;
+  id: number | string;
+  email: string;
+  balance?: number;
+  phone?: string;
+  role?: 'user' | 'admin';
+  first_name?: string;
+  last_name?: string;
+  name?: string;
 }
 
-// Create the context with a default value
-const UserContext = createContext<UserContextType | undefined>(undefined)
+interface UserContextType {
+  user: User | null;
+  loading: boolean;
+  error: string | null;
+  login: (email: string, password: string) => Promise<void>;
+  register: (userData: any) => Promise<any>;
+  logout: () => void;
+  updateUser: (userData: Partial<User>) => void;
+  clearError: () => void;
+  setUser: React.Dispatch<React.SetStateAction<User | null>>;
+}
 
-// Provider component
+const UserContext = createContext<UserContextType | undefined>(undefined);
+
 export function UserProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const { toast } = useToast()
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
-    // Check if user is stored in localStorage
-    const storedUser = localStorage.getItem("vibeflow-user")
-    const token = localStorage.getItem("vibeflow-token")
+    setLoading(true);
+    const storedUser = localStorage.getItem("vibeflow-user");
+    const token = localStorage.getItem("vibeflow-token");
 
     if (storedUser && token) {
       try {
-        setUser(JSON.parse(storedUser))
-
-        // Verify token by fetching user profile
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/me`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        })
-          .then((response) => {
-            if (!response.ok) {
-              throw new Error("Invalid token")
-            }
-            return response.json()
-          })
-          .then((data) => {
-            setUser(data.user)
-            localStorage.setItem("vibeflow-user", JSON.stringify(data.user))
-          })
-          .catch((err) => {
-            // Token might be invalid or expired
-            localStorage.removeItem("vibeflow-token")
-            localStorage.removeItem("vibeflow-user")
-            setUser(null)
-          })
-          .finally(() => {
-            setLoading(false)
-          })
+        const parsedUser: User = JSON.parse(storedUser);
+        setUser(parsedUser);
       } catch (e) {
-        console.error("Failed to parse stored user:", e)
-        setLoading(false)
+        console.error("Failed to parse stored user:", e);
+        localStorage.removeItem("vibeflow-user");
+        localStorage.removeItem("vibeflow-token");
+        setUser(null);
+      } finally {
+        setLoading(false);
       }
     } else {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [])
+  }, []);
 
   const clearError = useCallback(() => {
-    setError(null)
-  }, [])
+    setError(null);
+  }, []);
 
   const login = useCallback(
     async (email: string, password: string) => {
-      setLoading(true)
-      setError(null)
-
+      setLoading(true);
+      setError(null);
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/login`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ email, password }),
-        })
+         const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/login`, {
+           method: "POST",
+           headers: { "Content-Type": "application/json", },
+           body: JSON.stringify({ email, password }),
+         });
+         if (!response.ok) {
+           const errorData = await response.json().catch(() => ({}));
+           throw new Error(errorData.message || `Login failed (${response.status})`);
+         }
+         const data = await response.json();
+         const { user: loggedInUser, token } = data;
 
-        if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.message || "Login failed")
+        if (!loggedInUser || !token) {
+            throw new Error("Login response missing user data or token.");
         }
 
-        const data = await response.json()
+        localStorage.setItem("vibeflow-token", token);
+        localStorage.setItem("vibeflow-user", JSON.stringify(loggedInUser));
+        setUser(loggedInUser);
 
-        // Save token and user data
-        localStorage.setItem("vibeflow-token", data.token)
-        localStorage.setItem("vibeflow-user", JSON.stringify(data.user))
+        toast({ title: "Login successful", description: "Welcome back!" });
 
-        setUser(data.user)
-
-        toast({
-          title: "Login successful",
-          description: "Welcome back to Vibeflow Banking!",
-          duration: 3000,
-        })
-      } catch (e) {
-        if (e instanceof Error) {
-          setError(e.message)
-        } else {
-          setError("An unexpected error occurred during login")
-        }
-        console.error("Login error:", e)
-        throw e // Re-throw to allow the login page to handle it
+      } catch (e: any) {
+        console.error("Login error:", e);
+        setError(e.message || "An unexpected error occurred during login");
+        throw e;
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
     },
     [toast],
-  )
+  );
 
   const register = useCallback(
     async (userData: any) => {
-      setLoading(true)
-      setError(null)
-
+      setLoading(true);
+      setError(null);
       try {
         const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/register`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(userData),
-        })
-
+        });
         if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.message || "Registration failed")
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || `Registration failed (${response.status})`);
         }
-
-        const data = await response.json()
-
-        // Save token and user data
-        localStorage.setItem("vibeflow-token", data.token)
-        localStorage.setItem("vibeflow-user", JSON.stringify(data.user))
-
-        setUser(data.user)
-
-        toast({
-          title: "Registration successful",
-          description: "Welcome to Vibeflow Banking!",
-          duration: 3000,
-        })
-      } catch (e) {
-        if (e instanceof Error) {
-          setError(e.message)
-        } else {
-          setError("An unexpected error occurred during registration")
-        }
-        console.error("Registration error:", e)
-        throw e // Re-throw to allow the registration page to handle it
+        const data = await response.json();
+        toast({ title: "Registration successful", description: "Please log in." });
+        return data;
+      } catch (e: any) {
+        console.error("Registration error:", e);
+        setError(e.message || "An unexpected error occurred during registration");
+        throw e;
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
     },
     [toast],
-  )
+  );
 
-  const logout = useCallback(async () => {
-    try {
-      // Call logout API
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/logout`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("vibeflow-token")}`,
-        },
-      })
-
-      toast({
-        title: "Logged out",
-        description: "You have been successfully logged out",
-        duration: 3000,
-      })
-    } catch (error) {
-      console.error("Logout error:", error)
-    } finally {
-      // Clear local storage and state regardless of API success
-      localStorage.removeItem("vibeflow-token")
-      localStorage.removeItem("vibeflow-user")
-      setUser(null)
-    }
-  }, [toast])
+  const logout = useCallback(() => {
+    localStorage.removeItem("vibeflow-token");
+    localStorage.removeItem("vibeflow-user");
+    setUser(null);
+    toast({ title: "Logged out", description: "You have been successfully logged out." });
+  }, [toast]);
 
   const updateUser = useCallback((userData: Partial<User>) => {
     setUser((prevUser) => {
-      if (!prevUser) return null
-
-      const updatedUser = { ...prevUser, ...userData }
-      localStorage.setItem("vibeflow-user", JSON.stringify(updatedUser))
-      return updatedUser
-    })
-  }, [])
+      if (!prevUser) return null;
+      const updatedUser = { ...prevUser, ...userData };
+      localStorage.setItem("vibeflow-user", JSON.stringify(updatedUser));
+      return updatedUser;
+    });
+  }, []);
 
   return (
     <UserContext.Provider
@@ -213,19 +154,18 @@ export function UserProvider({ children }: { children: ReactNode }) {
         logout,
         updateUser,
         clearError,
+        setUser,
       }}
     >
       {children}
     </UserContext.Provider>
-  )
+  );
 }
 
-// Custom hook to use the context
 export function useUser() {
-  const context = useContext(UserContext)
+  const context = useContext(UserContext);
   if (context === undefined) {
-    throw new Error("useUser must be used within a UserProvider")
+    throw new Error("useUser must be used within a UserProvider");
   }
-  return context
+  return context;
 }
-

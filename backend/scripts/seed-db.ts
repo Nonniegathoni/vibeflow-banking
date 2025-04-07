@@ -119,7 +119,16 @@ async function seedDatabase() {
 
     // Create test users (excluding admin which should already exist)
     console.log("Creating test users...")
-    const users = []
+    interface User {
+      id: any;
+      name: string;
+      email: string;
+      role: string;
+      balance: number;
+      accountNumber: string;
+    }
+
+    const users: User[] = []
 
     for (let i = 0; i < kenyanNames.length; i++) {
       const name = kenyanNames[i]
@@ -152,7 +161,17 @@ async function seedDatabase() {
 
     // Create transactions
     console.log("Creating transactions...")
-    const transactions = []
+    interface Transaction {
+      id: any;
+      userId: any;
+      recipientId: any;
+      type: string;
+      amount: number;
+      status: string;
+      riskScore: number;
+    }
+
+    const transactions: Transaction[] = []
     const totalTransactions = 200
 
     for (let i = 0; i < totalTransactions; i++) {
@@ -193,8 +212,8 @@ async function seedDatabase() {
       const reported = riskScore > 85 || Math.random() < 0.03
 
       const result = await db.query(
-        `INSERT INTO transactions 
-         (user_id, recipient_id, type, amount, description, reference, status, reported, risk_score, location, ip_address, device_info  amount, description, reference, status, reported, risk_score, location, ip_address, device_info, created_at)
+        `INSERT INTO transactions
+        (user_id, recipient_id, type, amount, description, reference, status, reported, risk_score, location, ip_address, device_info, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          RETURNING id`,
         [
@@ -229,7 +248,7 @@ async function seedDatabase() {
 
     // Create fraud alerts for high-risk transactions
     console.log("Creating fraud alerts...")
-    const fraudAlerts = []
+    const fraudAlerts: any[] = []
 
     for (const transaction of transactions) {
       if (transaction.riskScore > 75 || Math.random() < 0.05) {
@@ -237,19 +256,18 @@ async function seedDatabase() {
         const description = `Suspicious ${transaction.type} of KSH ${transaction.amount.toFixed(2)}`
 
         // For resolved alerts, add resolution details
-        let resolution = null
-        let resolvedBy = null
-        let resolvedAt = null
+        let resolution: string | null = null;
+        let resolvedBy: any = null;
+        let resolvedAt: Date | null = null;
 
         if (status === "resolved") {
-          resolution =
-            Math.random() < 0.7
-              ? "Legitimate transaction confirmed with customer"
-              : "Fraudulent transaction, account credited"
+          resolution = Math.random() < 0.7
+            ? "Legitimate transaction confirmed with customer"
+            : "Fraudulent transaction, account credited";
+          resolvedAt = new Date();
           // Assign to an admin or agent
-          const adminUsers = users.filter((u) => u.role === "admin" || u.role === "agent")
-          resolvedBy = adminUsers[Math.floor(Math.random() * adminUsers.length)].id
-          resolvedAt = new Date()
+          const adminUsers = users.filter((u) => u.role === "admin" || u.role === "agent");
+          resolvedBy = adminUsers[Math.floor(Math.random() * adminUsers.length)]?.id;
         }
 
         const result = await db.query(
@@ -356,11 +374,15 @@ async function seedDatabase() {
       const status = Math.random() < 0.6 ? "open" : Math.random() < 0.5 ? "in_progress" : "resolved"
 
       let assignedTo = null
-      let resolvedAt = null
+      let resolvedAt: Date | null = null;
 
       if (status !== "open") {
-        const supportStaff = users.filter((u) => u.role === "admin" || u.role === "agent")
-        assignedTo = supportStaff[Math.floor(Math.random() * supportStaff.length)].id
+        const supportStaff = users.filter((u) => u.role === "admin" || u.role === "agent");
+        if (supportStaff.length > 0) {
+          assignedTo = supportStaff[Math.floor(Math.random() * supportStaff.length)].id;
+        } else {
+          assignedTo = null;
+        }
 
         if (status === "resolved") {
           resolvedAt = new Date()
@@ -472,98 +494,98 @@ async function seedDatabase() {
       const user = users[Math.floor(Math.random() * users.length)]
       const action = auditActions[Math.floor(Math.random() * auditActions.length)]
 
-      let entityType = null
-      let entityId = null
-      let details = null
+      let entityType: string | null = null;
+      let entityId: string | number | null = null;
+      let details: string | null = null;
 
-      if (action.startsWith("user.")) {
-        entityType = "user"
-        entityId = user.id
-
-        if (action === "user.login") {
+      switch (action) {
+        case "user.login":
+          entityType = "user"
+          entityId = user.id
           details = `User logged in from ${locations[Math.floor(Math.random() * locations.length)]}`
-        } else if (action === "user.logout") {
+          break
+        case "user.logout":
+          entityType = "user"
+          entityId = user.id
           details = "User logged out"
-        } else if (action === "user.password_change") {
+          break
+        case "user.password_change":
+          entityType = "user"
+          entityId = user.id
           details = "User changed password"
-        } else if (action === "user.profile_update") {
+          break
+        case "user.profile_update":
+          entityType = "user"
+          entityId = user.id
           details = "User updated profile information"
-        }
-      } else if (action.startsWith("transaction.")) {
-        entityType = "transaction"
-        entityId = transactions[Math.floor(Math.random() * transactions.length)].id
-
-        if (action === "transaction.create") {
+          break
+        case "transaction.create":
+          entityType = "transaction"
+          entityId = transactions[Math.floor(Math.random() * transactions.length)].id
           details = "Transaction created"
-        } else if (action === "transaction.approve") {
+          break
+        case "transaction.approve":
+          entityType = "transaction"
+          entityId = transactions[Math.floor(Math.random() * transactions.length)].id
           details = "Transaction approved after review"
-        } else if (action === "transaction.reject") {
-          details = "Transaction rejected due to suspicious activity"
-        }
-      } else if (action.startsWith("fraud.")) {
-        if (action.includes("alert")) {
+          break
+        case "transaction.reject":
+          entityType = "transaction"
+          entityId = transactions[Math.floor(Math.random() * transactions.length)].id
+          details = "Transaction rejected"
+          break
+        case "fraud.alert.create":
           entityType = "fraud_alert"
-          entityId = fraudAlerts.length > 0 ? fraudAlerts[Math.floor(Math.random() * fraudAlerts.length)].id : null
-
-          if (action === "fraud.alert.create") {
-            details = "Fraud alert created"
-          } else if (action === "fraud.alert.resolve") {
-            details = "Fraud alert resolved"
-          }
-        } else if (action.includes("rule")) {
+          entityId = fraudAlerts.length > 0 ? fraudAlerts[Math.floor(Math.random() * fraudAlerts.length)].id : null;
+          details = "Fraud alert created"
+          break
+        case "fraud.alert.resolve":
+          entityType = "fraud_alert"
+          entityId = fraudAlerts.length > 0 ? fraudAlerts[Math.floor(Math.random() * fraudAlerts.length)].id : null;
+          details = "Fraud alert resolved"
+          break
+        case "fraud.rule.create":
           entityType = "fraud_rule"
-          entityId = Math.floor(Math.random() * 5) + 1
-
-          if (action === "fraud.rule.create") {
-            details = "Fraud detection rule created"
-          } else if (action === "fraud.rule.update") {
-            details = "Fraud detection rule updated"
-          }
-        }
-      } else if (action.startsWith("admin.")) {
-        entityType = "admin"
-        entityId = user.id
-
-        if (action === "admin.login") {
+          entityId = 1 // No fraudRules array to pick from, so hardcoding to 1
+          details = "Fraud rule created"
+          break
+        case "fraud.rule.update":
+          entityType = "fraud_rule"
+          entityId = 1 // No fraudRules array to pick from, so hardcoding to 1
+          details = "Fraud rule updated"
+          break
+        case "admin.login":
+          entityType = "admin"
+          entityId = user.id
           details = `Admin logged in from ${locations[Math.floor(Math.random() * locations.length)]}`
-        } else if (action === "admin.user_update") {
-          details = `Admin updated user ${users[Math.floor(Math.random() * users.length)].name}`
-        } else if (action === "admin.system_setting_change") {
+          break
+        case "admin.user_update":
+          entityType = "admin"
+          entityId = user.id
+          details = "Admin updated user information"
+          break
+        case "admin.system_setting_change":
+          entityType = "admin"
+          entityId = user.id
           details = "Admin changed system settings"
-        }
+          break
       }
 
       await db.query(
         `INSERT INTO audit_logs 
-         (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [user.id, action, entityType, entityId, details, generateIpAddress(), generateDate(30)],
+         (user_id, action, entity_type, entity_id, details, created_at) 
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [user.id, action, entityType, entityId, details, generateDate(7)],
       )
     }
 
-    console.log("Created 100 audit logs")
+    console.log("Created audit logs")
 
-    console.log("✅ Database seeding completed successfully")
-
-    // Print test credentials
-    console.log("\n🔑 Test Credentials:")
-    console.log("Admin User:")
-    console.log("  Email: admin@vibeflow.com")
-    console.log("  Password: Admin123!")
-
-    console.log("\nRegular Users:")
-    for (let i = 2; i < 5; i++) {
-      console.log(`  Email: ${users[i].email}`)
-      console.log("  Password: Password123")
-    }
+    console.log("✅ Database seeding completed successfully!")
   } catch (error) {
-    console.error("❌ Database seeding error:", error)
-  } finally {
-    // Close the pool
-    db.pool.end()
+    console.error("🔥 Error seeding database:", error)
   }
 }
 
-// Run the seed function
+// Execute database seeding
 seedDatabase()
-

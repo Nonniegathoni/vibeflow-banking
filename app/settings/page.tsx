@@ -5,7 +5,7 @@ import { useUser } from "@/contexts/UserContext"
 import { getUserProfile, updateUserProfile } from "@/services/api"
 
 export default function SettingsPage() {
-    const { user, setUser } = useUser()
+    const { user, setUser, logout } = useUser()
     const [formData, setFormData] = useState({
         name: "",
         email: "",
@@ -22,7 +22,14 @@ export default function SettingsPage() {
         const fetchProfile = async () => {
             try {
                 const response = await getUserProfile()
-                setFormData(response.data)
+                setFormData({
+                    name: response.data.name || "",
+                    email: response.data.email || "",
+                    phone: response.data.phone || "",
+                    emailAlerts: response.data.emailAlerts || false,
+                    smsAlerts: response.data.smsAlerts || false,
+                    twoFactorAuth: response.data.twoFactorAuth || false,
+                })
             } catch (error) {
                 console.error("Error fetching profile:", error)
             } finally {
@@ -41,7 +48,7 @@ export default function SettingsPage() {
         setMessage("")
 
         try {
-            const response = await updateUserProfile(formData)
+            const response = await updateUserProfile(formData.name, formData.email, formData.phone)
             setMessage("Settings updated successfully")
             if (setUser && user) {
                 setUser({ ...user, name: formData.name })
@@ -158,6 +165,15 @@ export default function SettingsPage() {
                             className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 disabled:opacity-50"
                         >
                             {saving ? "Saving..." : "Save Settings"}
+                        </button>
+                        <button
+                            type="button"
+                            className="w-full bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50"
+                            onClick={() => {
+                                logout()
+                            }}
+                        >
+                            Logout
                         </button>
                     </div>
                 </form>

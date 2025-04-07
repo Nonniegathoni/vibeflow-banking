@@ -1,34 +1,5 @@
 const { spawn } = require("child_process")
 const path = require("path")
-const dotenv = require("dotenv")
-const fs = require("fs")
-
-// Load environment variables
-dotenv.config()
-
-// Check if .env file exists, if not create one with defaults
-const envPath = path.resolve(__dirname, "../.env")
-if (!fs.existsSync(envPath)) {
-  console.log("⚠️ .env file not found, creating with default values...")
-  const defaultEnv = `# Frontend environment variables
-NEXT_PUBLIC_API_URL=http://localhost:5000/api
-
-# Backend environment variables
-PORT=5000
-JWT_SECRET=vibeflow_secure_jwt_secret_key_2024
-FRONTEND_URL=http://localhost:3000
-
-# PostgreSQL Database Configuration
-DB_USER=vibeflow_user
-DB_PASSWORD=Secure_Password_123!
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=vibeflow_banking
-NODE_ENV=development
-`
-  fs.writeFileSync(envPath, defaultEnv)
-  console.log("✅ Created default .env file")
-}
 
 // Colors for console output
 const colors = {
@@ -78,13 +49,13 @@ function runCommand(command, args, options = {}) {
 }
 
 // Start the backend server
-const backendProc = runCommand("node", ["backend/server.js"], {
+const backendProc = runCommand("npx", ["ts-node", "--project", "tsconfig.server.json", "backend/server.ts"], {
   label: "Backend",
   color: colors.cyan,
 })
 
 // Start the frontend development server
-const frontendProc = runCommand("next", ["dev"], {
+const frontendProc = runCommand("npx", ["next", "dev"], {
   label: "Frontend",
   color: colors.magenta,
 })

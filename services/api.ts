@@ -1,131 +1,159 @@
-import axios from "axios"
+const getApiUrl = (): string => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    if (!apiUrl) {
+        console.error("Error: NEXT_PUBLIC_API_URL environment variable is not set.");
+        return 'http://localhost:5000/api'; // Adjust default if needed
+    }
+    return apiUrl;
+};
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
+const getAuthToken = (): string | null => {
+    return localStorage.getItem("vibeflow-token");
+};
 
-const api = axios.create({
-    baseURL: API_URL,
-    headers: {
-        "Content-Type": "application/json",
-    },
-})
-
-api.interceptors.request.use((config) => {
-    const token = localStorage.getItem("token")
+const createAuthHeaders = (): HeadersInit => {
+    const token = getAuthToken();
+    const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+    };
     if (token) {
-        config.headers["Authorization"] = `Bearer ${token}`
+        headers['Authorization'] = `Bearer ${token}`;
     }
-    return config
-})
+    return headers;
+};
 
-api.interceptors.response.use(
-    (response) => response,
-    (error) => {
-        if (error.response?.status === 401) {
-            localStorage.removeItem("token")
-            window.location.href = "/"
-        }
-        return Promise.reject(error)
-    },
-)
 
-export const login = async (email: string, password: string) => {
-    try {
-        const response = await api.post("/auth/login", { email, password })
-        return response.data
-    } catch (error: any) {
-        throw new Error(error.response?.data?.message || "Login failed")
+import { Transaction } from "@/types";
+
+export const getTransactions = async (limit = 10, offset = 0, sort = 'date', order = 'desc'): Promise<Transaction[]> => {
+    const token = getAuthToken();
+    if (!token) {
+        throw new Error("Unauthorized: No token found.");
     }
-}
 
-export const register = async (name: string, email: string, password: string, phone: string) => {
-    try {
-        const response = await api.post("/auth/register", { name, email, password, phone })
-        return response.data
-    } catch (error: any) {
-        throw new Error(error.response?.data?.message || "Registration failed")
+    const apiUrl = getApiUrl();
+    const queryParams = new URLSearchParams({
+        limit: String(limit),
+        offset: String(offset),
+        sort: sort,
+        order: order
+    });
+
+    const response = await fetch(`${apiUrl}/transactions?${queryParams.toString()}`, {
+        method: 'GET',
+        headers: createAuthHeaders(),
+    });
+
+    if (response.status === 401) {
+        throw new Error("Unauthorized: Invalid or expired token.");
     }
-}
-
-export const getTransactions = async () => {
-    try {
-        const response = await api.get("/transactions")
-        return response.data
-    } catch (error: any) {
-        throw new Error(error.response?.data?.message || "Failed to fetch transactions")
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
     }
-}
 
-export const createTransaction = async (amount: number, type: "deposit" | "withdrawal", description: string) => {
-    try {
-        const response = await api.post("/transactions", { amount, type, description })
-        return response.data
-    } catch (error: any) {
-        throw new Error(error.response?.data?.message || "Failed to create transaction")
+    const data = await response.json();
+    const transactions = data.transactions || [];
+
+    // Map the API response to the Transaction interface from types/index.ts
+    return transactions.map((transaction: any) => {
+      const createdAt = new Date(transaction.created_at).toISOString();
+      const isSuspicious = transaction.is_suspicious || false;
+      return {
+        id: String(transaction.id),
+        userId: transaction.userId || "unknown", //API does not return userId, setting to unknown
+        type: transaction.type,
+        amount: transaction.amount,
+        description: transaction.description,
+        timestamp: new Date(transaction.created_at).getTime(),
+        status: "completed", //API does not return status, setting to completed
+        riskScore: transaction.is_suspicious ? 1 : 0,
+        createdAt: createdAt,
+        isSuspicious: isSuspicious,
+      };
+    });
+};
+
+export const register = async (name: string, email: string, password: string, phone: string): Promise<any> => {
+    const apiUrl = getApiUrl();
+    const response = await fetch(`${apiUrl}/register`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name, email, password, phone }),
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
     }
-}
 
-export const getUserProfile = async () => {
-    try {
-        const response = await api.get("/users/profile")
-        return response.data
-    } catch (error: any) {
-        throw new Error(error.response?.data?.message || "Failed to fetch user profile")
+    return await response.json();
+};
+
+export const reportFraud = async (transactionId: string): Promise<void> => {
+    const token = getAuthToken();
+    if (!token) {
+        throw new Error("Unauthorized: No token found.");
     }
-}
+    const apiUrl = getApiUrl();
 
-export const updateUserProfile = async (data: any) => {
-    try {
-        const response = await api.put("/users/profile", data)
-        return response.data
-    } catch (error: any) {
-        throw new Error(error.response?.data?.message || "Failed to update profile")
+    const response = await fetch(`${apiUrl}/transactions/report/${transactionId}`, {
+        method: 'POST',
+        headers: createAuthHeaders(),
+    });
+
+    if (response.status === 401) {
+        throw new Error("Unauthorized: Invalid or expired token.");
     }
-}
-
-export const reportFraud = async () => {
-    try {
-        const response = await api.post("/users/report-fraud")
-        return response.data
-    } catch (error: any) {
-        throw new Error(error.response?.data?.message || "Failed to report fraud")
+    if (!response.ok) {
+         const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
     }
-}
+};
 
-export const adminLogin = async (username: string, password: string) => {
-    try {
-        const response = await api.post("/admin/auth/login", { username, password })
-        return response.data
-    } catch (error: any) {
-        throw new Error(error.response?.data?.message || "Admin login failed")
+export const getUserProfile = async (): Promise<any> => {
+    const token = getAuthToken();
+    if (!token) {
+        throw new Error("Unauthorized: No token found.");
     }
-}
+    const apiUrl = getApiUrl();
+    const response = await fetch(`${apiUrl}/profile`, {
+        method: 'GET',
+        headers: createAuthHeaders(),
+    });
 
-export const getAdminUsers = async () => {
-    try {
-        const response = await api.get("/admin/users")
-        return response.data
-    } catch (error: any) {
-        throw new Error(error.response?.data?.message || "Failed to fetch users")
+    if (response.status === 401) {
+        throw new Error("Unauthorized: Invalid or expired token.");
     }
-}
-
-export const getAdminTransactions = async () => {
-    try {
-        const response = await api.get("/admin/transactions")
-        return response.data
-    } catch (error: any) {
-        throw new Error(error.response?.data?.message || "Failed to fetch transactions")
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
     }
-}
 
-export const resolveAlert = async (userId: string) => {
-    try {
-        const response = await api.put(`/admin/resolve-alert/${userId}`)
-        return response.data
-    } catch (error: any) {
-        throw new Error(error.response?.data?.message || "Failed to resolve alert")
+    return await response.json();
+};
+
+export const updateUserProfile = async (name: string, email: string, phone: string): Promise<any> => {
+    const token = getAuthToken();
+    if (!token) {
+        throw new Error("Unauthorized: No token found.");
     }
-}
+    const apiUrl = getApiUrl();
+    const response = await fetch(`${apiUrl}/profile`, {
+        method: 'PUT',
+        headers: createAuthHeaders(),
+        body: JSON.stringify({ name, email, phone }),
+    });
 
-export default api
+    if (response.status === 401) {
+        throw new Error("Unauthorized: Invalid or expired token.");
+    }
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+    }
 
+    return await response.json();
+};

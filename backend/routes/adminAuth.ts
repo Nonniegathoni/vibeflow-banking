@@ -1,39 +1,34 @@
-import express, { type Request, type Response } from "express"
-import jwt from "jsonwebtoken"
-import Admin from "../models/Admin"
+// backend/routes/adminAuth.ts
 
-const router = express.Router()
+import { compare } from 'bcrypt';
+import { Request, Response, NextFunction } from 'express';
+import { pool } from '../config/database';
 
-interface LoginRequest {
-  username: string
-  password: string
-}
+export const adminLogin = async (req: Request, res: Response) => {
+  const { email, password } = req.body;
 
-router.post("/login", async (req: Request, res: Response) => {
   try {
-    const { username, password } = req.body as LoginRequest
+    // Query the admin from database
+    const { rows } = await pool.query(
+      'SELECT * FROM administrators WHERE email = $1',
+      [email]
+    );
 
-    const admin = await Admin.findOne({ where: { username } })
-
-    if (!admin || !(await admin.comparePassword(password))) {
-      return res.status(401).json({ message: "Invalid username or password" })
+    if (rows.length === 0) {
+      return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    const token = jwt.sign({ adminId: admin.id, role: admin.role }, process.env.JWT_SECRET!, { expiresIn: "1h" })
+    const admin = rows[0];
+    
+    // Compare passwords
+    const isMatch = await compare(password, admin.password_hash);
+    
+    if (!isMatch) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
 
-    res.json({
-      token,
-      admin: {
-        id: admin.id,
-        username: admin.username,
-        email: admin.email,
-        role: admin.role,
-      },
-    })
   } catch (error) {
-    res.status(400).json({ message: "Error logging in", error: (error as Error).message })
+    console.error('Admin login error:', error);
+    res.status(500).json({ message: 'Server error during authentication' });
   }
-})
-
-export default router
-
+};

@@ -1,92 +1,51 @@
-import express, { type Request, type Response, type NextFunction } from "express"
-import { authMiddleware, adminMiddleware } from "../middleware/auth"
-import { createNotFoundError } from "../middleware/error-handler"
-import { isValidKenyanPhone } from "../utils/validation"
-import db from "../config/database"
+import { type Request, type Response, type NextFunction, Router } from "express"
+import { auth } from "../middleware/auth"
+import { pool } from "../config/database" // Updated import path
 
-const router = express.Router()
+const router = Router()
 
-// Protect all routes in this router
-router.use(authMiddleware)
-
-// Get current user profile
-router.get("/me", async (req: Request, res: Response, next: NextFunction) => {
+// Get user profile
+router.get("/profile", auth, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // User is already attached to req by authMiddleware
-    res.status(200).json({
-      success: true,
-      user: req.user,
-    })
-  } catch (error) {
-    next(error)
-  }
-})
+    // Now TypeScript knows that req.user exists because of our type declaration
+    const userId = req.user?.id
 
-// Update user profile
-router.put("/me", async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { name, phoneNumber } = req.body
-    const updates: Record<string, any> = {}
-
-    if (name) updates.name = name
-
-    if (phoneNumber) {
-      if (!isValidKenyanPhone(phoneNumber)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid phone number format",
-        })
-      }
-      updates.phone_number = phoneNumber
+    if (!userId) {
+      return res.status(401).json({ message: "User not authenticated" })
     }
 
-    // Build the query dynamically
-    const keys = Object.keys(updates)
-    if (keys.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "No updates provided",
-      })
-    }
-
-    // Create SET clause and values array
-    const setClause = keys.map((key, i) => `${key} = $${i + 1}`).join(", ")
-    const values = Object.values(updates)
-    values.push(req.user.id)
-
-    const result = await db.query(`UPDATE users SET ${setClause} WHERE id = $${values.length} RETURNING *`, values)
-
-    res.status(200).json({
-      success: true,
-      message: "Profile updated successfully",
-      user: result.rows[0],
-    })
-  } catch (error) {
-    next(error)
-  }
-})
-
-// Get user by ID (admin only)
-router.get("/:id", adminMiddleware, async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { id } = req.params
-
-    const result = await db.query("SELECT * FROM users WHERE id = $1", [id])
+    const result = await pool.query(
+      "SELECT id, email, first_name, last_name, role, created_at FROM users WHERE id = $1",
+      [userId],
+    )
 
     if (result.rows.length === 0) {
-      throw createNotFoundError("User")
+      return res.status(404).json({ message: "User not found" })
     }
 
-    // Remove password from response
-    const { password, ...userWithoutPassword } = result.rows[0]
+    res.json({ user: result.rows[0] })
+  } catch (error) {
+    next(error)
+  }
+})
 
-    res.status(200).json({
-      success: true,
-      user: userWithoutPassword,
-    })
+// Get all users (admin only)
+router.get("/", auth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    // Check if user is admin
+    if (req.user?.role !== "admin") {
+      return res.status(403).json({ message: "Access denied" })
+    }
+
+    const result = await pool.query(
+      "SELECT id, email, first_name, last_name, role, created_at FROM users ORDER BY created_at DESC",
+    )
+
+    res.json({ users: result.rows })
   } catch (error) {
     next(error)
   }
 })
 
 export default router
+
