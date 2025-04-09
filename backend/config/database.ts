@@ -1,50 +1,49 @@
-import { Pool } from "pg"
-import dotenv from "dotenv"
-
+import { Sequelize } from 'sequelize';
+import dotenv from 'dotenv';
 // Load environment variables
-dotenv.config()
+dotenv.config();
 
-// Create a new pool instance with connection details from environment variables
-const pool = new Pool({
-  user: process.env.DB_USER,
-  host: process.env.DB_HOST,
-  database: process.env.DB_NAME,
-  password: process.env.DB_PASSWORD,
-  port: Number.parseInt(process.env.DB_PORT || "5432"),
-  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
-})
+const dbName = process.env.DB_NAME as string;
+const dbUser = process.env.DB_USER as string;
+const dbHost = process.env.DB_HOST;
+const dbPassword = process.env.DB_PASSWORD as string;
+const dbPort = process.env.DB_PORT ? parseInt(process.env.DB_PORT, 10) : 5432; // Default PostgreSQL port
 
-// Test the database connection
-pool
-  .connect()
-  .then((client) => {
-    console.log("✅ Connected to PostgreSQL database")
-    client.release()
-  })
-  .catch((err) => {
-    console.error("❌ Error connecting to PostgreSQL database:", err.message)
-  })
-
-// Helper function for executing queries
-export const query = async (text: string, params: any[] = []) => {
-  try {
-    const start = Date.now()
-    const res = await pool.query(text, params)
-    const duration = Date.now() - start
-
-    if (process.env.NODE_ENV !== "production") {
-      console.log("Executed query", { text, duration, rows: res.rowCount })
-    }
-
-    return res
-  } catch (error) {
-    console.error("Query error:", error)
-    throw error
-  }
+// Basic validation (important!)
+if (!dbName || !dbUser || !dbPassword || !dbHost) {
+  console.error("❌ FATAL ERROR: Database configuration environment variables (DB_NAME, DB_USER, DB_PASSWORD, DB_HOST) are missing!");
+  // In a real app, you might want to throw an error or exit gracefully
+  throw new Error("Missing essential database configuration in environment variables.");
 }
 
-export { pool }
+// Initialize Sequelize instance
+const sequelize = new Sequelize(dbName, dbUser, dbPassword, {
+  host: dbHost,
+  port: dbPort,
+  dialect: 'postgres', // Explicitly state the dialect
+  logging: process.env.NODE_ENV === 'development' ? console.log : false, // Log SQL in dev, silence in prod
+  pool: {
+    // Sequelize's internal pool settings, configure as needed
+    max: 10, // Max number of connections in pool
+    min: 0, // Min number of connections in pool
+    acquire: 30000, // Max time (ms) to get connection before error
+    idle: 10000 // Max time (ms) connection can be idle before release
+  },
+  dialectOptions: {
+    // Add dialect-specific options if needed
+    // Example for SSL in production (adjust based on your provider's requirements)
+    ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+  }
+});
 
-// Add default export
-export default { pool, query }
+// Optional: Test the connection managed by Sequelize
+sequelize.authenticate()
+  .then(() => {
+    console.log('✅ Sequelize connection has been established successfully.');
+  })
+  .catch(err => {
+    console.error('❌ Unable to connect to the database via Sequelize:', err);
+  });
 
+// Export ONLY the initialized Sequelize instance
+export default sequelize;

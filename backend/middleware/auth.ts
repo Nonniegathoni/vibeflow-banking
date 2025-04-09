@@ -1,47 +1,74 @@
 import { type Request, type Response, type NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import { pool } from "../config/database";
+import sequelize from "../config/database"; // Import the Sequelize instance
+import User from "../models/User"; // Import User model
 
 // Extend the Request type to include the user property
 declare global {
   namespace Express {
     interface Request {
-      user?: { id: number; email: string; role: string };
+      user?: {
+        id: number;
+        email: string;
+        role: string;
+      };
     }
   }
 }
 
+// Authentication middleware
 export const auth = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // Get token from header
-    const token = req.header("Authorization")?.replace("Bearer ", "");
+    // Get token from authorization header or cookie
+    const token = 
+      req.headers.authorization?.split(' ')[1] || // Bearer TOKEN format
+      req.cookies?.sessionToken;
 
     if (!token) {
-      return res.status(401).json({ message: "No token, authorization denied" });
+      return res.status(401).json({ message: 'Authentication required' });
     }
 
-    // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "default_secret") as {
-      id: number;
-      email: string;
-      role: string;
+    // Verify the token
+    const decoded = jwt.verify(
+      token, 
+      process.env.JWT_SECRET || 'your-secret-key'
+    ) as { id: number; email: string; role: string };
+
+    // Find the user by id using Sequelize model
+    const user = await User.findByPk(decoded.id);
+    
+    if (!user) {
+      return res.status(401).json({ message: 'User not found' });
+    }
+
+    // Attach the user info to the request
+    req.user = {
+      id: decoded.id,
+      email: decoded.email,
+      role: decoded.role
     };
 
-    // Get user from token
-    const result = await pool.query("SELECT id, email, first_name, last_name, role FROM users WHERE id = $1", [
-      decoded.id,
-    ]);
+    next();
+  } catch (error) {
+    if (error instanceof jwt.JsonWebTokenError) {
+      return res.status(401).json({ message: 'Invalid token' });
+    }
+    console.error('Auth middleware error:', error);
+    return res.status(500).json({ message: 'Server error during authentication' });
+  }
+};
 
-    if (result.rows.length === 0) {
-      return res.status(401).json({ message: "Invalid token" });
+// Role-based authorization middleware
+export const authorize = (roles: string[]) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Authentication required' });
     }
 
-    const user = result.rows[0];
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
 
-    // Add user to request
-    req.user = { id: user.id, email: user.email, role: user.role };
     next();
-  } catch (err) {
-    res.status(401).json({ message: "Token is not valid" });
-  }
+  };
 };

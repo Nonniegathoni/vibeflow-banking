@@ -51,13 +51,12 @@ api.interceptors.response.use(
 export default api
 
 // Helper functions for common API operations
-export const fetchTransactions = async (userId: string) => {
+export const fetchTransactions = async (limit = "50", offset = "0") => {
   try {
-    const response = await api.get(`/transactions?userId=${userId}`)
+    const response = await api.get(`/transactions?limit=${limit}&offset=${offset}`)
     return response.data.transactions
   } catch (error) {
     console.error("Error fetching transactions:", error)
-    return []
+    throw error // Rethrow to allow component to handle the error
   }
 }
-

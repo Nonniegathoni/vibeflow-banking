@@ -1,141 +1,171 @@
-"use client";
-import { Transaction } from "@/types";
+"use client"
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { useUser } from "@/contexts/UserContext";
-import { getTransactions, reportFraud } from "@/services/api";
-import { formatKES } from "@/utils/format";
-import { AlertTriangle } from "lucide-react";
-import LoadingSpinner from "@/components/LoadingSpinner";
-
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ArrowDownLeft, ArrowUpRight, Filter, Plus } from "lucide-react"
+import { LoadingSpinner } from "@/components/ui/loading"
+import type { Transaction } from "@/types/index"
+import { formatCurrency } from "@/lib/utils"
 
 export default function TransactionsPage() {
-    const { user, loading: userLoading } = useUser();
-    const [transactions, setTransactions] = useState<Transaction[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
-    const router = useRouter();
+  const router = useRouter()
+  const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
 
-    useEffect(() => {
-        if (!userLoading && !user) {
-            router.push("/login");
-            return;
+  useEffect(() => {
+    async function fetchTransactions() {
+      try {
+        setLoading(true)
+        const response = await fetch("/api/transactions")
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch transactions")
         }
 
-        if (user) {
-            const fetchTransactions = async () => {
-                setLoading(true);
-                setError("");
-                try {
-                    const fetchedTransactions = await getTransactions();
-                    setTransactions(fetchedTransactions as any || []);
-                } catch (err: any) {
-                    console.error("Transaction fetch error:", err);
-                    if (err.message?.includes('Unauthorized')) {
-                         setError("Authentication failed. Please log in again.");
-                    } else {
-                         setError(err.message || "Error fetching transactions");
-                    }
-                } finally {
-                    setLoading(false);
-                }
-            };
-            fetchTransactions();
-        }
-    }, [user, userLoading, router]);
-
-    const handleReportFraud = async (transactionId: string | number) => {
-        setError("");
-        const idString = String(transactionId);
-        try {
-            await reportFraud(idString);
-            alert("Fraud reported successfully.");
-
-            setLoading(true);
-            const refreshedTransactions = await getTransactions();
-            setTransactions(refreshedTransactions as any || []);
-        } catch (err: any) {
-             console.error("Error reporting fraud:", err);
-            setError(err.message || "Error reporting fraud");
-        } finally {
-             setLoading(false);
-        }
-    };
-
-    if (userLoading || !user) {
-       return <LoadingSpinner />;
+        const data = await response.json()
+        setTransactions(data.transactions || [])
+      } catch (error) {
+        console.error("Error fetching transactions:", error)
+        setError("Failed to load transactions. Please try again.")
+      } finally {
+        setLoading(false)
+      }
     }
 
-    if (loading) {
-        return <LoadingSpinner />;
+    fetchTransactions()
+  }, [])
+
+  // Format date function
+  const formatDate = (dateString: string) => {
+    if (!dateString) return "N/A"
+
+    try {
+      const date = new Date(dateString)
+      return date.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })
+    } catch (e) {
+      console.error("Date formatting error:", e)
+      return "Invalid date"
     }
+  }
 
-    return (
-        <div className="p-6">
-            <h1 className="mb-6 text-2xl font-bold text-gray-800">Transaction History</h1>
-
-            {error && (
-                <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700" role="alert">
-                    <span className="font-medium">Error:</span> {error}
-                </div>
-            )}
-
-            <div className="overflow-hidden rounded-lg bg-white shadow">
-                {transactions.length === 0 ? (
-                     <p className="p-6 text-center text-gray-500">No transactions found.</p>
-                ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full min-w-[600px] text-sm">
-                            <thead className="bg-gray-50">
-                                <tr className="text-left text-gray-600">
-                                    <th className="p-3 font-medium">Date</th>
-                                    <th className="p-3 font-medium">Description</th>
-                                    <th className="p-3 text-right font-medium">Amount</th>
-                                    <th className="p-3 text-center font-medium">Status</th>
-                                    <th className="p-3 text-center font-medium">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-200">
-                                {transactions.map((transaction) => (
-                                    <tr key={transaction.id} className="hover:bg-gray-50">
-                                        <td className="p-3 whitespace-nowrap">{new Date(transaction.timestamp).toLocaleDateString()}</td>
-                                        <td className="p-3">{transaction.description}</td>
-                                        <td
-                                            className={`p-3 text-right font-medium whitespace-nowrap ${
-                                                transaction.amount < 0 ? "text-red-600" : "text-green-600"
-                                            }`}
-                                        >
-                                            {formatKES(transaction.amount)}
-                                        </td>
-                                        <td className="p-3 text-center">
-                                            {transaction.reported ? (
-                                                <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-700">
-                                                    <AlertTriangle className="h-3 w-3" /> Reported
-                                                </span>
-                                            ) : (
-                                                <span className="rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-700">
-                                                    Normal
-                                                </span>
-                                            )}
-                                        </td>
-                                        <td className="p-3 text-center">
-                                            {transaction.reported && (
-                                                <button
-                                                    onClick={() => handleReportFraud(transaction.id)}
-                                                    className="rounded bg-red-100 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-1"
-                                                >
-                                                    Report Fraud
-                                                </button>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </div>
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold">Transactions</h1>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" className="flex items-center gap-1">
+            <Filter className="h-4 w-4" />
+            Filter
+          </Button>
+          <Button
+            size="sm"
+            className="flex items-center gap-1"
+            onClick={() => router.push("/dashboard/transactions/new")}
+          >
+            <Plus className="h-4 w-4" />
+            New Transaction
+          </Button>
         </div>
-    );
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Transaction History</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {error && <div className="p-4 bg-red-50 border border-red-200 text-red-600 rounded-md mb-4">{error}</div>}
+
+          {loading ? (
+            <div className="py-8">
+              <LoadingSpinner />
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead>
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Date
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Description
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Amount
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Type
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {transactions.length > 0 ? (
+                    transactions.map((transaction) => (
+                      <tr key={transaction.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {formatDate(transaction.created_at)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {transaction.description}
+                        </td>
+                        <td
+                          className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${
+                            transaction.type === "credit" ? "text-green-600" : "text-red-600"
+                          }`}
+                        >
+                          {transaction.type === "credit" ? "+" : "-"}
+                          {formatCurrency(Number.parseFloat(transaction.amount || "0"))}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          <span
+                            className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                              transaction.status === "completed"
+                                ? "bg-green-100 text-green-800"
+                                : transaction.status === "pending"
+                                  ? "bg-yellow-100 text-yellow-800"
+                                  : "bg-red-100 text-red-800"
+                            }`}
+                          >
+                            {transaction.status
+                              ? transaction.status.charAt(0).toUpperCase() + transaction.status.slice(1)
+                              : "Unknown"}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          <div className="flex items-center">
+                            {transaction.type === "credit" ? (
+                              <ArrowDownLeft className="h-4 w-4 text-green-500 mr-1" />
+                            ) : (
+                              <ArrowUpRight className="h-4 w-4 text-red-500 mr-1" />
+                            )}
+                            {transaction.type === "credit" ? "Deposit" : "Withdrawal"}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-4 text-center text-sm text-gray-500">
+                        No transactions found
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
 }

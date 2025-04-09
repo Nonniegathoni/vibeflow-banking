@@ -1,106 +1,118 @@
-import { type Request, type Response, type NextFunction, Router } from "express"
-import bcrypt from "bcrypt"
-import jwt from "jsonwebtoken"
-import { pool } from "../config/database" // Assuming 'pool' is your intended 'db' object
-// If 'db' is truly different, you'll need to import/configure it instead of pool here.
+import { type Request, type Response, type NextFunction, Router } from "express";
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
+import User from "../models/User"; // Import the Sequelize User model
 
-const router = Router()
+const router = Router();
 
-// Register a new user (This part remains unchanged from your original code)
+// Register a new user
 router.post("/register", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { email, password, firstName, lastName } = req.body
-
-    // Check if user already exists
-    const userExists = await pool.query("SELECT * FROM users WHERE email = $1", [email])
-
-    if (userExists.rows.length > 0) {
-      return res.status(400).json({ message: "User already exists" })
+    const { email, password, name, phone_number } = req.body;
+    
+    // Validate required fields
+    if (!email || !password || !name) {
+      return res.status(400).json({ message: "Name, email, and password are required" });
     }
-
-    // Hash password
-    const salt = await bcrypt.genSalt(10)
-    const hashedPassword = await bcrypt.hash(password, salt)
-
-    // Create user
-    const result = await pool.query(
-      "INSERT INTO users (email, password, first_name, last_name, role) VALUES ($1, $2, $3, $4, $5) RETURNING id, email, first_name, last_name, role",
-      [email, hashedPassword, firstName, lastName, "user"],
-    )
-
-    const user = result.rows[0]
-
+    
+    // Check if user already exists using Sequelize
+    const existingUser = await User.findOne({ where: { email } });
+    if (existingUser) {
+      return res.status(409).json({ message: "Email already in use" });
+    }
+    
+    // Create user using Sequelize Model
+    const newUser = await User.create({
+      name,
+      email,
+      password, // Password will be hashed via User model hooks
+      phone_number
+    });
+    
+    // User data to return (exclude password)
+    const userData = newUser.get({ plain: true });
+    // Instead of using delete operator, create a new object without the password
+    const { password: _, ...userWithoutPassword } = userData;
+    
     // Create JWT token
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role }, // Original JWT payload kept for register
-      process.env.JWT_SECRET || "default_secret", // Original secret kept for register
-      { expiresIn: "1d" }, // Original expiry kept for register
-    )
-
+      { id: newUser.id, email: newUser.email, role: newUser.role },
+      process.env.JWT_SECRET || "default_secret",
+      { expiresIn: "1d" }
+    );
+    
+    // Send response
     res.status(201).json({
       message: "User registered successfully",
       token,
-      user: {
-        id: user.id,
-        email: user.email,
-        firstName: user.first_name, // Using original response field names for register
-        lastName: user.last_name,
-        role: user.role,
-      },
-    })
-  } catch (error) {
-    next(error) // Original error handling kept for register
-  }
-})
-
-// Login user (This part is updated based on your second snippet)
-router.post('/login', async (req: Request, res: Response) => { // Removed 'next' as it's not used in the new logic's catch block
-  try {
-    const { email, password } = req.body;
-
-    // Verify user exists - Using 'pool' from the original code's import
-    const userResult = await pool.query('SELECT * FROM users WHERE email = $1', [email]); // Renamed 'user' to 'userResult' to avoid conflict
-
-    if (userResult.rows.length === 0) {
-      // Using error format from the second snippet
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    const user = userResult.rows[0]; // Extracted user data
-
-    // Verify password
-    const validPassword = await bcrypt.compare(password, user.password);
-    if (!validPassword) {
-      // Using error format from the second snippet
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    // Create JWT token - Using payload, secret fallback, and expiry from the second snippet
-    const token = jwt.sign(
-      { id: user.id, email: user.email }, // Payload from second snippet
-      process.env.JWT_SECRET || 'your-secret-key', // Secret fallback from second snippet
-      { expiresIn: '1h' } // Expiry from second snippet
-    );
-
-    // Return user data and token - Using structure from the second snippet
-    // NOTE: Assumes your 'users' table has 'first_name', 'last_name', and 'phone' columns
-    // The original SELECT * will fetch them if they exist.
-    return res.status(200).json({
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        first_name: user.first_name, // snake_case from second snippet
-        last_name: user.last_name,   // snake_case from second snippet
-        phone: user.phone          // phone field from second snippet
-      }
+      user: userWithoutPassword
     });
-  } catch (error) {
-    console.error(error); // Error handling from the second snippet
-    // Error response format from the second snippet
-    return res.status(500).json({ error: 'Server error' });
+  } catch (error: any) {
+    // Handle validation errors
+    if (error.name === 'SequelizeValidationError') {
+      const messages = error.errors.map((e: any) => e.message);
+      return res.status(400).json({ message: 'Validation failed', errors: messages });
+    }
+    
+    console.error("Registration Error:", error.message);
+    next(error);
   }
 });
 
+// Login user
+router.post('/login', async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body;
+    
+    // Validate input
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password are required' });
+    }
+    
+    // Verify user exists
+    const user = await User.findOne({ where: { email } });
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+    
+    // Verify password
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+    
+    // Update last login timestamp
+    user.last_login = new Date();
+    await user.save();
+    
+    // Create JWT token
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '1h' }
+    );
+    
+    // Return user data without password
+    const userData = user.get({ plain: true });
+    // Use destructuring to omit the password field
+    const { password: _, ...userWithoutPassword } = userData;
+    
+    // Set token in cookie and response
+    res.cookie('sessionToken', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 3600 * 1000
+    });
+    
+    return res.status(200).json({
+      message: "Login successful",
+      user: userWithoutPassword
+    });
+  } catch (error: any) {
+    console.error("Login Error:", error.message);
+    return res.status(500).json({ message: 'Server error during login' });
+  }
+});
 
-export default router // This part remains unchanged
+export default router;

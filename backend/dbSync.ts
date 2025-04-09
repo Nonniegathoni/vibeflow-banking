@@ -1,4 +1,4 @@
-import db from "../config/database";
+import db from "../backend/config/database";
 import fs from "fs";
 import path from "path";
 
@@ -74,7 +74,7 @@ async function setupDatabase(): Promise<void> {
     console.error("❌ Database setup failed:", err);
   } finally {
     // End the pool
-    await db.pool.end();
+    await db.close();
   }
 }
 
