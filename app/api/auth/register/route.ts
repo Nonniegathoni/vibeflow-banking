@@ -1,25 +1,52 @@
-import { NextResponse } from 'next/server';
-import { pool } from '@/lib/db';
-import { hash } from 'bcryptjs';
+import { NextRequest, NextResponse } from 'next/server';
 
-export async function POST(request: Request) {
+const BACKEND_API_URL = process.env.BACKEND_API_URL || 'http://localhost:5000/api';
+
+export async function POST(request: NextRequest) {
   try {
     const { firstName, lastName, email, password } = await request.json();
 
-    const hashedPassword = await hash(password, 12);
-    const { rows } = await pool.query(
-      `INSERT INTO users (first_name, last_name, email, password, role)
-       VALUES ($1, $2, $3, $4, 'user')
-       RETURNING id, first_name, email`,
-      [firstName, lastName || null, email, hashedPassword]
-    );
+    if (!firstName || !email || !password) {
+        return NextResponse.json({ message: 'Missing required fields (firstName, email, password)' }, { status: 400 });
+    }
 
-    return NextResponse.json(rows[0], { status: 201 });
+    const backendResponse = await fetch(`${BACKEND_API_URL}/auth/register`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        firstName,
+        lastName,
+        email,
+        password,
+      }),
+      cache: 'no-store',
+    });
+
+    const bodyText = await backendResponse.text();
+
+    if (!backendResponse.ok) {
+      console.error(`Backend registration error: ${backendResponse.status}`, bodyText);
+      let errorJson = { message: 'Registration failed on backend.' };
+      try {
+        errorJson = JSON.parse(bodyText);
+      } catch (e) { /* Ignore parsing error */ }
+      return NextResponse.json(errorJson, { status: backendResponse.status });
+    }
+
+    try {
+        const registrationResult = JSON.parse(bodyText);
+        return NextResponse.json(registrationResult, { status: backendResponse.status });
+    } catch (e) {
+        console.error("Error parsing backend JSON response for registration:", e, bodyText);
+        return NextResponse.json({ message: 'Invalid response from backend.' }, { status: 500 });
+    }
 
   } catch (error) {
-    console.error('Registration error:', error);
+    console.error('Error forwarding registration request:', error);
     return NextResponse.json(
-      { message: 'Registration failed' },
+      { message: 'Internal Server Error processing registration.' },
       { status: 500 }
     );
   }

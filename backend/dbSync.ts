@@ -1,6 +1,7 @@
-import db from "../backend/config/database";
+import db from "../backend/config/database"; 
 import fs from "fs";
 import path from "path";
+import { QueryTypes } from 'sequelize'; 
 
 // SQL to create users table
 const createUsersTable = `
@@ -49,34 +50,33 @@ CREATE TABLE IF NOT EXISTS fraud_alerts (
 );
 `;
 
-// Function to execute SQL queries
 async function executeSql(sql: string, description: string): Promise<void> {
   try {
+    // Use the imported Sequelize instance (db) to run raw SQL
     await db.query(sql);
     console.log(`✅ ${description} successful`);
   } catch (err) {
     console.error(`❌ ${description} failed:`, (err as Error).message);
+    // Re-throw the error to stop the setup process if a table fails to create
+    throw err;
   }
 }
 
-// Main function to set up database
 async function setupDatabase(): Promise<void> {
   console.log("🔄 Setting up database tables...");
 
   try {
-    // Create tables
     await executeSql(createUsersTable, "Users table creation");
     await executeSql(createTransactionsTable, "Transactions table creation");
     await executeSql(createFraudAlertsTable, "Fraud alerts table creation");
 
     console.log("✅ Database setup completed successfully");
   } catch (err) {
-    console.error("❌ Database setup failed:", err);
-  } finally {
-    // End the pool
-    await db.close();
+    console.error("❌ Database setup failed overall.");
+    // Exit with error code if setup fails critically
+    process.exit(1);
   }
+  
 }
 
-// Run the setup
 setupDatabase();
