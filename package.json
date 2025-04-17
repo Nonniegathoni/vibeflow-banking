@@ -59,6 +59,7 @@
     "express": "^4.18.2",
     "express-rate-limit": "^6.9.0",
     "helmet": "^7.0.0",
+    "input-otp": "^1.4.2",
     "jose": "^6.0.10",
     "jsonwebtoken": "^9.0.1",
     "lucide-react": "^0.292.0",
@@ -72,12 +73,14 @@
     "react-day-picker": "^8.9.1",
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.48.2",
+    "react-otp-input": "^3.1.1",
     "recharts": "^2.15.2",
     "sequelize": "^6.37.7",
     "sonner": "^1.2.3",
     "tailwind-merge": "^2.0.0",
     "tailwindcss-animate": "^1.0.7",
     "uuid": "^11.1.0",
+    "vaul": "^1.1.2",
     "zod": "^3.22.2"
   },
   "devDependencies": {
